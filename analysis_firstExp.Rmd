@@ -1,5 +1,5 @@
 ---
-title: "analysis_secondStudy"
+title: "analysis_firstStudy"
 output: html_document
 date: "2025-12-19"
 ---
@@ -10,7 +10,8 @@ library(dplyr)
 library(reshape2)
 library(ggplot2)
 library(kableExtra)
-df = read.csv('df_long_secondStudy_merged.csv')
+df = read.csv('/Users/talnahari/Dropbox/ABL/Cognitive rewards across Developement/summaries/submission/df_long_firstStudy_merged999.csv')
+
 ```
 
 Examining that all sub-categories are rewarding 
@@ -89,17 +90,17 @@ paran(df_PCA_scaled[,c(4:ncol(df_PCA_scaled))],
       )
 
 # PCA
-rotated_loadings <- psych::principal(df_PCA_scaled[,c(4:ncol(df_PCA_scaled))], nfactors=2, rotate = "varimax")
+rotated_loadings <- psych::principal(df_PCA_scaled[,c(4:ncol(df_PCA_scaled))], nfactors=1, rotate = "varimax")
 rotated_loadings$Structure
 # GET the weights
 weights <- as.data.frame(rotated_loadings$loadings[])
 weights$category = row.names(weights)
-weights$col = ifelse(grepl('Social|Sensory', weights$category),'grey', 'gold')
-weights_m = melt(weights, id.vars = c('category', 'col'))
-weights_m$ordered_category = factor(weights_m$category, levels = c("Information",  "Novelty","Agency",  "Uncertainty.reduction", "Social","Sensory"), labels = c("Knowledge",  "Novelty","Agency",  "Uncertainty reduction", "Social","Sensory"))
+weights_m = melt(weights, id.vars = c('category'))
+weights_m$col = T
+weights_m$ordered_category = factor(weights_m$category, levels = c("Agency",  "Knowledge","Novelty",  "Uncertainty.reduction"))
 # plot 
   
-p_pca = ggplot(weights_m, aes(ordered_category, value, fill = as.factor(col))) +facet_grid(.~variable) + geom_col(position = position_dodge())  + geom_hline(yintercept =  0, linetype = "dashed", size = 1.5) + theme_minimal()  + scale_fill_manual(values = c('gold', 'grey')) + 
+p_pca = ggplot(weights_m, aes(ordered_category, value, fill = as.factor(col))) +facet_grid(.~variable) + geom_col(position = position_dodge())  + geom_hline(yintercept =  0, linetype = "dashed", size = 1.5) + theme_minimal()+ scale_fill_manual(values = c('gold')) + 
      theme(axis.line = element_line(colour = "black"),
         panel.grid.major = element_blank(),
         legend.position = "none", 
@@ -112,10 +113,9 @@ p_pca = ggplot(weights_m, aes(ordered_category, value, fill = as.factor(col))) +
 p_pca
 
 PCA_red = rotated_loadings$scores
-df_PCA_scaled$PC_positive_component = PCA_red[,1]
-df_PCA_scaled$PC_uniquelyCognitive = PCA_red[,2]
+df_PCA_scaled$PC_component = PCA_red[,1]
 
-df_to_join <- df[,c('ID','consistency', 'cognitive_abilities', 'income', 'degree')] %>%
+df_to_join <- df[,c('ID', 'income', 'degree')] %>%
     distinct(ID, .keep_all = TRUE)
 
 df_PCA_scaled_merged = merge(df_PCA_scaled,df_to_join, by = 'ID', all.x = T, all.y = F)
@@ -128,38 +128,26 @@ models of PCA
 ```{r}
 df_PCA_scaled_merged$age_rounded_2 = df_PCA_scaled_merged$age_rounded^2
 
-lm_positive = lm(data = df_PCA_scaled_merged, PC_positive_component ~ age_rounded + cognitive_abilities+ consistency+ income + degree)
-summary(lm_positive)
-
-lm_quadratic_positive = lm(data = df_PCA_scaled_merged, PC_positive_component ~ age_rounded + age_rounded_2 + cognitive_abilities+ consistency + income + degree)
-summary(lm_quadratic_positive)
-anova(lm_positive, lm_quadratic_positive)
-
-
-lm_quadratic_cognitive = lm(data = df_PCA_scaled_merged, PC_uniquelyCognitive ~ age_rounded + age_rounded_2 + cognitive_abilities + consistency+ income + degree)
+lm_quadratic_cognitive = lm(data = df_PCA_scaled_merged, PC_component ~ age_rounded + age_rounded_2 + income + degree)
 summary(lm_quadratic_cognitive)
+anova(lm_quadratic_cognitive)
 
-lm_cognitive = lm(data = df_PCA_scaled_merged, PC_uniquelyCognitive ~ age_rounded + cognitive_abilities + consistency+ income + degree)
+lm_cognitive = lm(data = df_PCA_scaled_merged, PC_component ~ age_rounded + income + degree)
 summary(lm_cognitive)
 anova(lm_cognitive)
 anova(lm_cognitive,lm_quadratic_cognitive)
 
 
-p_q_PC = ggplot(df_PCA_scaled, aes(x = age_rounded, y = PC_uniquelyCognitive)) + 
+p_q_PC = ggplot(df_PCA_scaled, aes(x = age_rounded, y = PC_component)) + 
   geom_point(alpha = 0.4) + 
   theme_bw() + 
   xlab("") + 
-  geom_smooth(data = df_PCA_scaled, aes(x = age_rounded, y = PC_uniquelyCognitive), method = "lm", formula = y ~ x + I(x^2), color = "royalblue",se = TRUE, inherit.aes = FALSE,fill = "royalblue") +
+  geom_smooth(data = df_PCA_scaled, aes(x = age_rounded, y = PC_component), method = "lm", formula = y ~ x + I(x^2), color = "royalblue",se = TRUE, inherit.aes = FALSE,fill = "royalblue") +
 scale_x_continuous(breaks = 4:12) + 
   ylab("") + 
   geom_hline(yintercept = 0, linetype = "dashed", size = 0.5)  
 
+p_q_PC
 
-lm_social = lm(data = df_PCA_scaled_merged, Social ~ age_rounded + age_rounded_2 + cognitive_abilities + consistency+ income + degree)
-summary(lm_social)
-
-lm_social_linear = lm(data = df_PCA_scaled_merged, Social ~ age_rounded + cognitive_abilities + consistency+ income + degree)
-summary(lm_social_linear)
-anova(lm_social,lm_social_linear)
 ```
 
