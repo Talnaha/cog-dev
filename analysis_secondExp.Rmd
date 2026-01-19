@@ -1,0 +1,165 @@
+---
+title: "analysis_secondStudy"
+output: html_document
+date: "2025-12-19"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(reshape2)
+library(ggplot2)
+library(kableExtra)
+df = read.csv('df_long_secondStudy_merged.csv')
+```
+
+Examining that all sub-categories are rewarding 
+
+```{r}
+
+df_ttests_by_subcategory = data.frame()
+row = 1
+for (i in unique(df$subCategory)){
+      a = t.test(df$Difference[df$subCategory == i], mu = 0)
+      df_ttests_by_subcategory[row,1] = i
+      df_ttests_by_subcategory[row,2] = round(a$statistic, 3)
+      df_ttests_by_subcategory[row,3] = round(a$p.value, 3)
+      df_ttests_by_subcategory[row,4] = round(a$estimate, 3)
+  row = row+1
+}
+colnames(df_ttests_by_subcategory) = c("category", "t", "p", "meanDiff")
+
+df_ttests_by_subcategory$sig = ifelse(df_ttests_by_subcategory$p < .05, T, F)
+
+
+kable(df_ttests_by_subcategory, caption = "T-Tests by Category", format = "html") %>%
+  kable_styling(full_width = TRUE, font_size = 12, bootstrap_options = c("striped", "scrolling"), position = "center") %>%
+  row_spec(which(df_ttests_by_subcategory$sig == TRUE), background = "lightgreen")
+
+```
+
+Examining that all categories are rewarding
+
+```{r}
+
+df_by_category = df %>% group_by(ID, age, age_rounded, category) %>% summarise(meanDiff = mean(Difference))
+
+df_ttests_by_category = data.frame()
+row = 1
+for (i in unique(df_by_category$category)){
+      a = t.test(df_by_category$meanDiff[df_by_category$category == i], mu = 0)
+      df_ttests_by_category[row,1] = i
+      df_ttests_by_category[row,2] = round(a$statistic, 3)
+      df_ttests_by_category[row,3] = round(a$p.value, 3)
+      df_ttests_by_category[row,4] = round(a$estimate, 3)
+  row = row+1
+}
+colnames(df_ttests_by_category) = c("category", "t", "p", "meanDiff")
+
+df_ttests_by_category$sig = ifelse(df_ttests_by_category$p < .05, T, F)
+
+
+kable(df_ttests_by_category, caption = "T-Tests by Category", format = "html") %>%
+  kable_styling(full_width = TRUE, font_size = 12, bootstrap_options = c("striped", "scrolling"), position = "center") %>%
+  row_spec(which(df_ttests_by_category$sig == TRUE), background = "lightgreen")
+
+```
+
+PCA analysis 
+
+```{r}
+library(paran)
+library(psych)
+df_PCA = dcast(df_by_category, ID + age + age_rounded ~ category)
+df_PCA_scaled = data.frame(df_PCA[,c(1:3)], scale(df_PCA[,c(4:ncol(df_PCA))]))
+
+# Parallel Analysis
+paran(df_PCA_scaled[,c(4:ncol(df_PCA_scaled))], 
+      iterations = 8000, 
+      centile = 0, 
+      quietly = FALSE, 
+      status = TRUE, 
+      all = FALSE,
+      cfa = FALSE,
+      graph = TRUE,
+      color = TRUE,
+      col = c("black", "red", "blue"),
+      lty=c(1,2,3), lwd=1, legend=TRUE, file="",
+      width=640, height=640, grdevice="png", seed=0, mat=NA, n=NA
+      )
+
+# PCA
+rotated_loadings <- psych::principal(df_PCA_scaled[,c(4:ncol(df_PCA_scaled))], nfactors=2, rotate = "varimax")
+rotated_loadings$Structure
+# GET the weights
+weights <- as.data.frame(rotated_loadings$loadings[])
+weights$category = row.names(weights)
+weights$col = ifelse(grepl('Social|Sensory', weights$category),'grey', 'gold')
+weights_m = melt(weights, id.vars = c('category', 'col'))
+weights_m$ordered_category = factor(weights_m$category, levels = c("Information",  "Novelty","Agency",  "Uncertainty.reduction", "Social","Sensory"), labels = c("Knowledge",  "Novelty","Agency",  "Uncertainty reduction", "Social","Sensory"))
+# plot 
+  
+p_pca = ggplot(weights_m, aes(ordered_category, value, fill = as.factor(col))) +facet_grid(.~variable) + geom_col(position = position_dodge())  + geom_hline(yintercept =  0, linetype = "dashed", size = 1.5) + theme_minimal()  +  scale_fill_manual("Condition",values = c('grey19', 'plum4')) + scale_fill_manual(values = c('gold', 'grey')) + 
+     theme(axis.line = element_line(colour = "black"),
+        panel.grid.major = element_blank(),
+        legend.position = "none", 
+        axis.text = element_text(size = 12, face = "bold"),
+        axis.title = element_text(size = 24, face = "bold"), 
+        plot.title = element_text(size = 28, face = "bold"),
+        strip.background = element_rect(fill = "white"),
+        strip.text = element_text(size = 12, face = "bold")) + coord_flip() +   scale_x_discrete(limits = rev(levels(weights_m$ordered_category))) 
+
+p_pca
+
+PCA_red = rotated_loadings$scores
+df_PCA_scaled$PC_positive_component = PCA_red[,1]
+df_PCA_scaled$PC_uniquelyCognitive = PCA_red[,2]
+
+df_to_join <- df[,c('ID','consistency', 'cognitive_abilities', 'income', 'degree')] %>%
+    distinct(ID, .keep_all = TRUE)
+
+df_PCA_scaled_merged = merge(df_PCA_scaled,df_to_join, by = 'ID', all.x = T, all.y = F)
+
+```
+
+developmental analysis
+
+models of PCA
+```{r}
+df_PCA_scaled_merged$age_rounded_2 = df_PCA_scaled_merged$age_rounded^2
+
+lm_positive = lm(data = df_PCA_scaled_merged, PC_positive_component ~ age_rounded + cognitive_abilities+ consistency+ income + degree)
+summary(lm_positive)
+
+lm_quadratic_positive = lm(data = df_PCA_scaled_merged, PC_positive_component ~ age_rounded + age_rounded_2 + cognitive_abilities+ consistency + income + degree)
+summary(lm_quadratic_positive)
+anova(lm_positive, lm_quadratic_positive)
+
+
+lm_quadratic_cognitive = lm(data = df_PCA_scaled_merged, PC_uniquelyCognitive ~ age_rounded + age_rounded_2 + cognitive_abilities + consistency+ income + degree)
+summary(lm_quadratic_cognitive)
+
+lm_cognitive = lm(data = df_PCA_scaled_merged, PC_uniquelyCognitive ~ age_rounded + cognitive_abilities + consistency+ income + degree)
+summary(lm_cognitive)
+anova(lm_cognitive)
+anova(lm_cognitive,lm_quadratic_cognitive)
+
+
+p_q_PC = ggplot(df_PCA_scaled, aes(x = age_rounded, y = PC_uniquelyCognitive)) + 
+  geom_point(alpha = 0.4) + 
+  theme_bw() + 
+  xlab("") + 
+  geom_smooth(data = df_PCA_scaled, aes(x = age_rounded, y = PC_uniquelyCognitive), method = "lm", formula = y ~ x + I(x^2), color = "royalblue",se = TRUE, inherit.aes = FALSE,fill = "royalblue") +
+scale_x_continuous(breaks = 4:12) + 
+  ylab("") + 
+  geom_hline(yintercept = 0, linetype = "dashed", size = 0.5)  
+
+
+lm_social = lm(data = df_PCA_scaled_merged, Social ~ age_rounded + age_rounded_2 + cognitive_abilities + consistency+ income + degree)
+summary(lm_social)
+
+lm_social_linear = lm(data = df_PCA_scaled_merged, Social ~ age_rounded + cognitive_abilities + consistency+ income + degree)
+summary(lm_social_linear)
+anova(lm_social,lm_social_linear)
+```
+
